@@ -16,31 +16,27 @@
 
 import json
 import os
-import sys
-from urlparse import urlparse
+from urllib.parse import urlparse
 
 from flask import Flask, render_template, send_from_directory, request, redirect, url_for, Response
-from flask.ext.sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
 from flask_user import UserManager, SQLAlchemyAdapter, current_user
-from flask.ext.user.signals import user_registered
-from flask_utils import length_password_validator
-from flask.ext.assets import Environment, Bundle
+from flask_user.signals import user_registered
+from flask_assets import Environment, Bundle
 
 app = Flask(__name__, template_folder='html')
-app.config.from_object(os.environ.get('APP_SETTINGS', 'flask_config.DevelopmentConfig'))
+app.config.from_object(os.environ.get('APP_SETTINGS', 'config.DevelopmentConfig'))
+
 db = SQLAlchemy(app)
 mail = Mail(app)
 
-from flask_models import User
+# Ensure the models and utilities are imported correctly
+from models import User  # Assuming your user model is in a file called models.py
 db_adapter = SQLAlchemyAdapter(db, User)
-user_manager = UserManager(db_adapter, app,
-                           password_validator=length_password_validator)
+user_manager = UserManager(db_adapter, app)
 
-# add my templates to flask-user so it can find my base.html
-my_templates = app.jinja_loader.searchpath[0]
-app.blueprints['flask_user'].jinja_loader.searchpath.insert(0, my_templates)
-
+# Adjust paths and file handling as necessary
 assets = Environment(app)
 editor_js = Bundle('js/restricted/editor/screenplay.coffee',
                    'js/restricted/editor/spellcheck.coffee',
@@ -51,23 +47,12 @@ scriptlist_js = Bundle('js/restricted/scriptlist/scriptlist.coffee',
                        filters='coffeescript', output='js/scriptlist-coffee.js')
 assets.register('scriptlist', scriptlist_js)
 
-import flask_editor
-import flask_scriptlist
-import flask_screenplay_export
-import flask_blog
-import flask_revision_history
-import flask_screenplay
-import flask_convert
-import flask_notes
-import flask_titlepage
-import flask_sharing
-import flask_folders
-import flask_stats
-import spellcheck
+# Additional Flask components
+from extra_modules import flask_editor, flask_scriptlist, flask_screenplay_export, flask_blog
 
 @app.context_processor
 def inject_config():
-    return dict(MODE='PRO', ANALYTICS_ID=app.config['ANALYTICS_ID'])
+    return {'MODE': 'PRO', 'ANALYTICS_ID': app.config['ANALYTICS_ID']}
 
 @user_registered.connect_via(app)
 def _after_registration_hook(sender, user, **extra):
@@ -75,14 +60,14 @@ def _after_registration_hook(sender, user, **extra):
 
 @app.route('/')
 def welcome():
-    if current_user.is_authenticated():
+    if current_user.is_authenticated:
         if not request.referrer:
             return redirect(url_for('scriptlist'))
         url = urlparse(request.referrer)
         paths = ['/blog', '/contact', '/about', '/scriptlist']
         if url.netloc == app.config['SERVER_NAME'] and url.path not in paths:
             return redirect(url_for('scriptlist'))
-    form = user_manager.login_form(next='/scriptlist')
+    form = user_manager.login_form(next=url_for('scriptlist'))
     return render_template('flask_welcome.html', form=form, login_form=form)
 
 @app.route('/contact')
